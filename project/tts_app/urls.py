@@ -15,6 +15,7 @@ urlpatterns = [
     path('record/<int:record_id>/delete/', views.delete_record, name='delete_record'),
     
     # API路由
+    path('api/get-audio-url/', views.api_get_audio_url, name='api_get_audio_url'),
     path('api/record/<int:record_id>/', views.api_record_detail, name='api_record_detail'),
     path('api/records/', views.api_record_list, name='api_record_list'),
 ]

@@ -186,7 +186,53 @@ project/
 
 ### 4. API接口
 
-系统提供RESTful API接口：
+#### 核心接口：智能获取音频URL
+
+🔥 **重点推荐**：这是最常用的API，可以自动判断是否需要生成音频。
+
+```bash
+POST /api/get-audio-url/
+```
+
+**功能**：
+- 传入英文文本
+- 如果文本已存在且URL有效 → 直接返回URL（< 1秒）
+- 如果文本已存在但URL过期 → 自动续期后返回（< 1秒）
+- 如果文本不存在 → 生成音频后返回（20-60秒）
+
+**示例**：
+```bash
+# 基本用法
+curl -X POST http://127.0.0.1:8000/api/get-audio-url/ \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, world!"}'
+
+# 指定有效期为24小时
+curl -X POST http://127.0.0.1:8000/api/get-audio-url/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello, world!",
+    "tts_type": "local",
+    "expire_time": 86400
+  }'
+```
+
+**响应示例**：
+```json
+{
+    "success": true,
+    "url": "https://web-audio.tos-cn-beijing.volces.com/audio.wav?...",
+    "expire_time": "2024-01-01 14:00:00",
+    "remaining_time": "1小时0分钟",
+    "is_new": false,
+    "is_renewed": false,
+    "record_id": 5
+}
+```
+
+详细文档：[API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+
+#### 其他接口
 
 - `GET /api/records/` - 获取记录列表（JSON）
 - `GET /api/records/?q=关键词` - 搜索记录

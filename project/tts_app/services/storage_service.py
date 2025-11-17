@@ -4,8 +4,9 @@
 """
 import os
 import tos
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.conf import settings
+from django.utils import timezone
 
 
 class StorageService:
@@ -100,8 +101,8 @@ class StorageService:
                 expires=expires
             )
             
-            # 计算过期时间
-            expire_time = datetime.now() + timedelta(seconds=expires)
+            # 计算过期时间（使用Django的timezone.now()以支持时区）
+            expire_time = timezone.now() + timedelta(seconds=expires)
             
             print(f"✅ 预签名URL生成成功")
             print(f"   URL: {result.signed_url[:100]}...")

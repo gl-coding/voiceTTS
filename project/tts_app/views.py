@@ -4,12 +4,14 @@ TTS应用视图
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
 from .models import AudioRecord
 from .forms import TTSForm
 from .services.tts_service import TTSServiceFactory
 from .services.storage_service import StorageService
 import os
+import json
 
 
 def index(request):
@@ -229,6 +231,205 @@ def delete_record(request, record_id):
 
 
 # API接口
+@require_http_methods(["POST", "GET"])
+def api_get_audio_url(request):
+    """
+    智能API: 获取音频URL
+    
+    如果文本已存在且URL有效，直接返回
+    如果文本已存在但URL过期，续期后返回
+    如果文本不存在，生成后返回
+    
+    POST参数:
+        text: 英文文本（必需）
+        tts_type: 生成方式 local/cloud（可选，默认local）
+        expire_time: 有效期秒数（可选，默认3600）
+        
+    返回:
+        {
+            "success": true,
+            "url": "预签名URL",
+            "expire_time": "过期时间",
+            "is_new": false,  # 是否新生成
+            "record_id": 1
+        }
+    """
+    # 获取参数
+    if request.method == 'POST':
+        if request.content_type == 'application/json':
+            try:
+                data = json.loads(request.body)
+            except:
+                data = {}
+        else:
+            data = request.POST
+    else:
+        data = request.GET
+    
+    text = data.get('text', '').strip()
+    tts_type = data.get('tts_type', 'local')
+    expire_seconds = int(data.get('expire_time', 3600))
+    
+    # 验证参数
+    if not text:
+        return JsonResponse({
+            'success': False,
+            'error': '文本内容不能为空'
+        }, status=400)
+    
+    if len(text) > 1000:
+        return JsonResponse({
+            'success': False,
+            'error': '文本内容不能超过1000字符'
+        }, status=400)
+    
+    if tts_type not in ['local', 'cloud']:
+        return JsonResponse({
+            'success': False,
+            'error': 'tts_type必须是local或cloud'
+        }, status=400)
+    
+    try:
+        # 1. 查找是否已存在相同文本的成功记录
+        from django.utils import timezone
+        existing_record = AudioRecord.objects.filter(
+            text=text,
+            status='success'
+        ).order_by('-uptime').first()
+        
+        is_new = False
+        
+        if existing_record:
+            # 记录已存在
+            print(f"找到已存在记录 ID: {existing_record.id}")
+            
+            # 检查URL是否过期
+            was_expired = existing_record.is_expired()
+            
+            if was_expired:
+                print("URL已过期，正在续期...")
+                # URL过期，续期
+                storage_service = StorageService()
+                object_key = os.path.basename(existing_record.path)
+                
+                success, preurl, expire_time, error_msg = storage_service.generate_presigned_url(
+                    object_key=object_key,
+                    expires=expire_seconds
+                )
+                
+                if success:
+                    existing_record.preurl = preurl
+                    existing_record.expire_time = expire_time
+                    existing_record.save()
+                    print("续期成功")
+                else:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'续期失败: {error_msg}'
+                    }, status=500)
+            else:
+                print("URL仍然有效，直接返回")
+            
+            # 返回现有记录
+            return JsonResponse({
+                'success': True,
+                'url': existing_record.preurl,
+                'expire_time': existing_record.expire_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'remaining_time': existing_record.get_remaining_time(),
+                'is_new': False,
+                'is_renewed': was_expired,
+                'record_id': existing_record.id,
+                'tts_type': existing_record.tts_type,
+                'created_at': existing_record.uptime.strftime('%Y-%m-%d %H:%M:%S')
+            })
+        
+        else:
+            # 记录不存在，需要生成
+            print(f"未找到记录，开始生成新音频...")
+            is_new = True
+            
+            # 创建记录
+            record = AudioRecord.objects.create(
+                text=text,
+                tts_type=tts_type,
+                status='pending'
+            )
+            
+            try:
+                # 生成语音
+                tts_service = TTSServiceFactory.get_service(tts_type)
+                success, file_path, error_msg = tts_service.generate_speech(text)
+                
+                if not success:
+                    record.status = 'failed'
+                    record.error_message = error_msg
+                    record.save()
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'语音生成失败: {error_msg}'
+                    }, status=500)
+                
+                record.path = file_path
+                
+                # 上传到对象存储并生成URL
+                storage_service = StorageService()
+                object_key = os.path.basename(file_path)
+                
+                success, preurl, expire_time, error_msg = storage_service.upload_and_get_url(
+                    file_path,
+                    object_key=object_key,
+                    expires=expire_seconds
+                )
+                
+                if not success:
+                    record.status = 'failed'
+                    record.error_message = f'上传失败: {error_msg}'
+                    record.save()
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'上传失败: {error_msg}'
+                    }, status=500)
+                
+                # 更新记录
+                record.preurl = preurl
+                record.expire_time = expire_time
+                record.status = 'success'
+                record.save()
+                
+                print(f"新音频生成成功 ID: {record.id}")
+                
+                # 返回新生成的记录
+                return JsonResponse({
+                    'success': True,
+                    'url': record.preurl,
+                    'expire_time': record.expire_time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'remaining_time': record.get_remaining_time(),
+                    'is_new': True,
+                    'record_id': record.id,
+                    'tts_type': record.tts_type,
+                    'created_at': record.uptime.strftime('%Y-%m-%d %H:%M:%S')
+                })
+                
+            except Exception as e:
+                record.status = 'failed'
+                record.error_message = str(e)
+                record.save()
+                return JsonResponse({
+                    'success': False,
+                    'error': f'处理失败: {str(e)}'
+                }, status=500)
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'系统错误: {str(e)}'
+        }, status=500)
+
+
+# 装饰器版本（免CSRF）
+api_get_audio_url = csrf_exempt(api_get_audio_url)
+
+
 @require_http_methods(["GET"])
 def api_record_detail(request, record_id):
     """API: 获取记录详情（JSON格式）"""

@@ -23,12 +23,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',  # CORS支持
     'tts_app',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS中间件（必须在CommonMiddleware之前）
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -115,4 +117,27 @@ LOCAL_TTS_MODEL = "tts_models/en/ljspeech/tacotron2-DDC"
 # 音频文件输出目录
 AUDIO_OUTPUT_DIR = BASE_DIR / 'media' / 'audio'
 os.makedirs(AUDIO_OUTPUT_DIR, exist_ok=True)
+
+# CORS配置（允许前端访问API）
+CORS_ALLOW_ALL_ORIGINS = True  # 开发环境允许所有来源
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
