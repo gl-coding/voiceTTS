@@ -158,6 +158,51 @@ def record_detail(request, record_id):
 
 
 @require_http_methods(["POST"])
+def renew_url(request, record_id):
+    """续期预签名URL"""
+    record = get_object_or_404(AudioRecord, id=record_id)
+    
+    # 只有成功的记录才能续期
+    if record.status != 'success':
+        messages.error(request, '只有成功生成的记录才能续期')
+        return redirect('record_detail', record_id=record_id)
+    
+    # 获取续期时长（秒），默认3600秒（1小时）
+    expire_seconds = int(request.POST.get('expire_time', 3600))
+    
+    try:
+        storage_service = StorageService()
+        
+        # 检查文件是否存在
+        if not record.path or not os.path.exists(record.path):
+            messages.error(request, '音频文件不存在，无法续期')
+            return redirect('record_detail', record_id=record_id)
+        
+        # 使用现有文件重新生成预签名URL
+        object_key = os.path.basename(record.path)
+        
+        success, preurl, expire_time, error_msg = storage_service.generate_presigned_url(
+            object_key=object_key,
+            expires=expire_seconds
+        )
+        
+        if success:
+            # 更新记录
+            record.preurl = preurl
+            record.expire_time = expire_time
+            record.save()
+            
+            messages.success(request, f'✅ URL续期成功！新的有效期至 {expire_time.strftime("%Y-%m-%d %H:%M:%S")}')
+        else:
+            messages.error(request, f'续期失败: {error_msg}')
+            
+    except Exception as e:
+        messages.error(request, f'续期失败: {str(e)}')
+    
+    return redirect('record_detail', record_id=record_id)
+
+
+@require_http_methods(["POST"])
 def delete_record(request, record_id):
     """删除记录"""
     record = get_object_or_404(AudioRecord, id=record_id)

@@ -11,6 +11,7 @@ urlpatterns = [
     path('result/<int:record_id>/', views.result, name='result'),
     path('records/', views.record_list, name='record_list'),
     path('record/<int:record_id>/', views.record_detail, name='record_detail'),
+    path('record/<int:record_id>/renew/', views.renew_url, name='renew_url'),
     path('record/<int:record_id>/delete/', views.delete_record, name='delete_record'),
     
     # API路由

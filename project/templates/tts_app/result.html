@@ -72,11 +72,17 @@
                         </small>
                     </div>
 
-                    <!-- 下载按钮 -->
+                    <!-- 操作按钮 -->
                     <div class="text-center">
                         <a href="{{ record.preurl }}" class="btn btn-primary" download>
                             <i class="bi bi-download"></i> 下载音频
                         </a>
+                        
+                        <!-- 续期按钮 -->
+                        <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#renewModal">
+                            <i class="bi bi-arrow-clockwise"></i> 续期URL
+                        </button>
+                        
                         <a href="{% url 'index' %}" class="btn btn-outline-secondary">
                             <i class="bi bi-arrow-left"></i> 返回首页
                         </a>
@@ -109,6 +115,58 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 续期模态框 -->
+    <div class="modal fade" id="renewModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-arrow-clockwise"></i> 续期预签名URL
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="post" action="{% url 'renew_url' record.id %}">
+                    {% csrf_token %}
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i>
+                            续期将为音频文件生成新的预签名URL，不会重新生成音频。
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="expire_time" class="form-label">
+                                <i class="bi bi-clock-history"></i> 选择新的有效期
+                            </label>
+                            <select name="expire_time" id="expire_time" class="form-select" required>
+                                <option value="3600">1小时</option>
+                                <option value="7200">2小时</option>
+                                <option value="21600" selected>6小时</option>
+                                <option value="43200">12小时</option>
+                                <option value="86400">24小时</option>
+                                <option value="259200">3天</option>
+                                <option value="604800">7天</option>
+                            </select>
+                            <small class="form-text text-muted">
+                                当前过期时间: {{ record.expire_time|date:"Y-m-d H:i:s" }}
+                            </small>
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <strong>注意:</strong> 续期后旧的URL将立即失效，请确保已保存必要信息。
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-arrow-clockwise"></i> 确认续期
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
