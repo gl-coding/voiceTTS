@@ -1,0 +1,7 @@
+Django==4.2.7
+sqlalchemy==2.0.23
+tos==2.6.3
+requests==2.31.0
+TTS>=0.13.0
+volcengine-python-sdk>=1.0.0
+

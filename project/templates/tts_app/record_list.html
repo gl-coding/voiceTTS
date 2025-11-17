@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}记录列表 - 英文语音生成{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-gradient">
+            <i class="bi bi-list-ul"></i> 音频记录列表
+        </h1>
+        <a href="{% url 'index' %}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> 新建语音
+        </a>
+    </div>
+
+    {% if records %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>文本内容</th>
+                    <th>生成方式</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td>{{ record.id }}</td>
+                    <td>
+                        <div class="text-truncate" style="max-width: 300px;">
+                            {{ record.text }}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge {% if record.tts_type == 'local' %}bg-info{% else %}bg-primary{% endif %}">
+                            {{ record.get_tts_type_display }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge {% if record.status == 'success' %}bg-success{% elif record.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
+                            {{ record.get_status_display }}
+                        </span>
+                    </td>
+                    <td>{{ record.uptime|date:"Y-m-d H:i" }}</td>
+                    <td>
+                        <a href="{% url 'record_detail' record.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        {% if record.status == 'success' %}
+                        <a href="{{ record.preurl }}" class="btn btn-sm btn-outline-success" download>
+                            <i class="bi bi-download"></i>
+                        </a>
+                        {% endif %}
+                        <form method="post" action="{% url 'delete_record' record.id %}" style="display: inline;" onsubmit="return confirm('确定要删除这条记录吗？');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-inbox" style="font-size: 4rem; color: #ccc;"></i>
+        <p class="text-muted mt-3">暂无记录</p>
+        <a href="{% url 'index' %}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> 创建第一条记录
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+

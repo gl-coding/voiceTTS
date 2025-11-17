@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+
+{% block title %}记录详情 - 英文语音生成{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-gradient">
+            <i class="bi bi-file-text"></i> 记录详情
+        </h1>
+        <a href="{% url 'record_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card">
+                <div class="card-body">
+                    <table class="table table-borderless">
+                        <tbody>
+                            <tr>
+                                <th width="30%">记录ID:</th>
+                                <td>{{ record.id }}</td>
+                            </tr>
+                            <tr>
+                                <th>生成方式:</th>
+                                <td>
+                                    <span class="badge {% if record.tts_type == 'local' %}bg-info{% else %}bg-primary{% endif %}">
+                                        {{ record.get_tts_type_display }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>状态:</th>
+                                <td>
+                                    <span class="badge {% if record.status == 'success' %}bg-success{% elif record.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
+                                        {{ record.get_status_display }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>文本内容:</th>
+                                <td>
+                                    <div class="alert alert-light">
+                                        {{ record.text }}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% if record.status == 'success' %}
+                            <tr>
+                                <th>音频播放:</th>
+                                <td>
+                                    <audio controls class="audio-player">
+                                        <source src="{{ record.preurl }}" type="audio/wav">
+                                    </audio>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>预签名URL:</th>
+                                <td>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control form-control-sm" value="{{ record.preurl }}" readonly>
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard('{{ record.preurl }}')">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>文件路径:</th>
+                                <td><code>{{ record.path }}</code></td>
+                            </tr>
+                            <tr>
+                                <th>过期时间:</th>
+                                <td>
+                                    {{ record.expire_time|date:"Y-m-d H:i:s" }}
+                                    {% if record.is_expired %}
+                                        <span class="badge bg-danger">已过期</span>
+                                    {% else %}
+                                        <span class="badge bg-success">有效</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if record.error_message %}
+                            <tr>
+                                <th>错误信息:</th>
+                                <td>
+                                    <div class="alert alert-danger">
+                                        {{ record.error_message }}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <th>创建时间:</th>
+                                <td>{{ record.uptime|date:"Y-m-d H:i:s" }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="text-center mt-4">
+                        {% if record.status == 'success' %}
+                        <a href="{{ record.preurl }}" class="btn btn-primary" download>
+                            <i class="bi bi-download"></i> 下载音频
+                        </a>
+                        {% endif %}
+                        <form method="post" action="{% url 'delete_record' record.id %}" style="display: inline;" onsubmit="return confirm('确定要删除这条记录吗？删除后将无法恢复。');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-trash"></i> 删除记录
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        alert('URL已复制到剪贴板！');
+    }, function(err) {
+        console.error('复制失败:', err);
+    });
+}
+</script>
+{% endblock %}
+
