@@ -63,7 +63,11 @@
                             <i class="bi bi-clock"></i> 
                             过期时间: {{ record.expire_time|date:"Y-m-d H:i:s" }}
                             {% if record.is_expired %}
-                                <span class="text-danger">(已过期)</span>
+                                <span class="badge bg-danger">已过期</span>
+                            {% else %}
+                                {% if record.get_remaining_time %}
+                                    <span class="badge bg-success">剩余 {{ record.get_remaining_time }}</span>
+                                {% endif %}
                             {% endif %}
                         </small>
                     </div>

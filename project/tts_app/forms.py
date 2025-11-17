@@ -8,6 +8,17 @@ from .models import AudioRecord
 class TTSForm(forms.Form):
     """文本转语音表单"""
     
+    # 过期时间选项（秒）
+    EXPIRE_TIME_CHOICES = [
+        (3600, '1小时'),
+        (7200, '2小时'),
+        (21600, '6小时'),
+        (43200, '12小时'),
+        (86400, '24小时'),
+        (259200, '3天'),
+        (604800, '7天'),
+    ]
+    
     text = forms.CharField(
         label='英文文本',
         widget=forms.Textarea(attrs={
@@ -27,6 +38,16 @@ class TTSForm(forms.Form):
         widget=forms.RadioSelect(attrs={
             'class': 'form-check-input',
         }),
+    )
+    
+    expire_time = forms.ChoiceField(
+        label='URL有效期',
+        choices=EXPIRE_TIME_CHOICES,
+        initial=3600,
+        widget=forms.Select(attrs={
+            'class': 'form-select',
+        }),
+        help_text='预签名URL的有效时长'
     )
     
     def clean_text(self):

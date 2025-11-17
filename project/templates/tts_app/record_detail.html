@@ -79,6 +79,9 @@
                                         <span class="badge bg-danger">已过期</span>
                                     {% else %}
                                         <span class="badge bg-success">有效</span>
+                                        {% if record.get_remaining_time %}
+                                            <span class="badge bg-info">剩余 {{ record.get_remaining_time }}</span>
+                                        {% endif %}
                                     {% endif %}
                                 </td>
                             </tr>

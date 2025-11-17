@@ -74,6 +74,23 @@ class AudioRecord(models.Model):
             return timezone.now() > self.expire_time
         return False
     
+    def get_remaining_time(self):
+        """获取剩余时间（人类可读格式）"""
+        if not self.expire_time or self.is_expired():
+            return None
+        
+        remaining = self.expire_time - timezone.now()
+        days = remaining.days
+        hours = remaining.seconds // 3600
+        minutes = (remaining.seconds % 3600) // 60
+        
+        if days > 0:
+            return f"{days}天{hours}小时"
+        elif hours > 0:
+            return f"{hours}小时{minutes}分钟"
+        else:
+            return f"{minutes}分钟"
+    
     def to_dict(self):
         """转换为字典"""
         return {

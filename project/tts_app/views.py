@@ -43,6 +43,7 @@ def generate_tts(request):
     
     text = form.cleaned_data['text']
     tts_type = form.cleaned_data['tts_type']
+    expire_seconds = int(form.cleaned_data['expire_time'])
     
     # 创建记录（初始状态为pending）
     record = AudioRecord.objects.create(
@@ -75,7 +76,7 @@ def generate_tts(request):
         success, preurl, expire_time, error_msg = storage_service.upload_and_get_url(
             file_path,
             object_key=object_key,
-            expires=3600  # 1小时有效期
+            expires=expire_seconds  # 使用用户选择的有效期
         )
         
         if not success:
@@ -113,11 +114,35 @@ def result(request, record_id):
 
 
 def record_list(request):
-    """记录列表"""
-    records = AudioRecord.objects.all()[:50]
+    """记录列表（支持搜索和分页）"""
+    from django.core.paginator import Paginator
+    from django.db.models import Q
+    
+    # 获取搜索关键词
+    search_query = request.GET.get('q', '').strip()
+    
+    # 基础查询
+    records = AudioRecord.objects.all()
+    
+    # 如果有搜索关键词，进行搜索
+    if search_query:
+        records = records.filter(
+            Q(text__icontains=search_query) |  # 文本内容包含关键词
+            Q(id__icontains=search_query)       # ID包含关键词
+        )
+    
+    # 按创建时间倒序排列
+    records = records.order_by('-uptime')
+    
+    # 分页，每页10条
+    paginator = Paginator(records, 10)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
     
     context = {
-        'records': records,
+        'page_obj': page_obj,
+        'search_query': search_query,
+        'total_count': paginator.count,
     }
     return render(request, 'tts_app/record_list.html', context)
 
@@ -177,13 +202,30 @@ def api_record_detail(request, record_id):
 
 @require_http_methods(["GET"])
 def api_record_list(request):
-    """API: 获取记录列表（JSON格式）"""
+    """API: 获取记录列表（JSON格式，支持搜索）"""
+    from django.db.models import Q
+    
+    # 获取参数
     limit = int(request.GET.get('limit', 20))
-    records = AudioRecord.objects.all()[:limit]
+    search_query = request.GET.get('q', '').strip()
+    
+    # 基础查询
+    records = AudioRecord.objects.all()
+    
+    # 搜索过滤
+    if search_query:
+        records = records.filter(
+            Q(text__icontains=search_query) |
+            Q(id__icontains=search_query)
+        )
+    
+    # 排序和限制
+    records = records.order_by('-uptime')[:limit]
     
     return JsonResponse({
         'success': True,
         'count': len(records),
+        'search_query': search_query,
         'data': [record.to_dict() for record in records]
     })
 
