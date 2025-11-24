@@ -7,6 +7,6 @@ elif [ "$arg" == "backend" ]; then
 elif [ "$arg" == "db" ]; then
     db_url=$2
     curl -o "db.sqlite3" '$db_url'
-elif [ "$arg" == "clean" ]; then
+elif [ "$arg" == "clean_media" ]; then
     rm -f media/audio/*
 fi
