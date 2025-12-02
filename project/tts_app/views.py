@@ -475,3 +475,142 @@ def api_record_list(request):
         'data': [record.to_dict() for record in records]
     })
 
+
+@require_http_methods(["POST"])
+@csrf_exempt
+def api_upload_audio(request):
+    """
+    API: 直接上传本地音频文件到云端
+    
+    功能：
+    - 上传指定路径的本地音频文件到对象存储
+    - 生成预签名URL
+    - 保存记录到数据库
+    
+    POST参数（JSON格式）:
+        file_path: 本地音频文件路径（必需）
+        text: 文本内容（必需）
+        expire_time: 有效期秒数（可选，默认3600）
+        tts_type: 标记类型（可选，默认custom）
+        
+    返回:
+        {
+            "success": true,
+            "url": "预签名URL",
+            "expire_time": "过期时间",
+            "record_id": 1,
+            "message": "上传成功"
+        }
+    """
+    # 解析JSON参数
+    if request.content_type == 'application/json':
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': '无效的JSON格式'
+            }, status=400)
+    else:
+        data = request.POST
+    
+    file_path = data.get('file_path', '').strip()
+    text = data.get('text', '').strip()
+    expire_seconds = int(data.get('expire_time', 3600))
+    tts_type = data.get('tts_type', 'custom')
+    
+    # 验证参数
+    if not file_path:
+        return JsonResponse({
+            'success': False,
+            'error': '文件路径不能为空'
+        }, status=400)
+    
+    if not text:
+        return JsonResponse({
+            'success': False,
+            'error': '文本内容不能为空'
+        }, status=400)
+    
+    if len(text) > 1000:
+        return JsonResponse({
+            'success': False,
+            'error': '文本内容不能超过1000字符'
+        }, status=400)
+    
+    # 检查文件是否存在
+    if not os.path.exists(file_path):
+        return JsonResponse({
+            'success': False,
+            'error': f'文件不存在: {file_path}'
+        }, status=404)
+    
+    # 检查是否是音频文件
+    allowed_extensions = ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac']
+    file_ext = os.path.splitext(file_path)[1].lower()
+    if file_ext not in allowed_extensions:
+        return JsonResponse({
+            'success': False,
+            'error': f'不支持的音频格式: {file_ext}。支持的格式: {", ".join(allowed_extensions)}'
+        }, status=400)
+    
+    # 创建数据库记录
+    record = AudioRecord.objects.create(
+        text=text,
+        tts_type=tts_type,
+        status='pending',
+        path=file_path
+    )
+    
+    try:
+        # 上传到对象存储并生成预签名URL
+        storage_service = StorageService()
+        
+        # 生成唯一的对象key（使用时间戳+原文件名）
+        import time
+        timestamp = int(time.time() * 1000)
+        original_filename = os.path.basename(file_path)
+        filename_without_ext = os.path.splitext(original_filename)[0]
+        object_key = f"{filename_without_ext}_{timestamp}{file_ext}"
+        
+        success, preurl, expire_time, error_msg = storage_service.upload_and_get_url(
+            file_path,
+            object_key=object_key,
+            expires=expire_seconds
+        )
+        
+        if not success:
+            record.status = 'failed'
+            record.error_message = f'上传失败: {error_msg}'
+            record.save()
+            return JsonResponse({
+                'success': False,
+                'error': f'上传失败: {error_msg}'
+            }, status=500)
+        
+        # 更新记录状态
+        record.preurl = preurl
+        record.expire_time = expire_time
+        record.status = 'success'
+        record.save()
+        
+        return JsonResponse({
+            'success': True,
+            'url': preurl,
+            'expire_time': expire_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'remaining_time': record.get_remaining_time(),
+            'record_id': record.id,
+            'tts_type': tts_type,
+            'object_key': object_key,
+            'message': '✅ 音频上传成功'
+        })
+        
+    except Exception as e:
+        record.status = 'failed'
+        record.error_message = str(e)
+        record.save()
+        return JsonResponse({
+            'success': False,
+            'error': f'处理失败: {str(e)}'
+        }, status=500)
+

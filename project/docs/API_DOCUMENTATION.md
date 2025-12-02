@@ -306,6 +306,216 @@ def safe_get_audio_url(text, max_retries=3):
     return None
 ```
 
+## 直接上传音频文件接口
+
+### 接口说明
+
+直接上传本地音频文件到云端，无需通过TTS生成。适用于已有录音文件的场景。
+
+**特点**：
+- 📁 直接上传：上传本地音频文件到对象存储
+- 💾 保存记录：文本和音频信息保存到数据库
+- 🔗 生成URL：自动生成预签名URL
+- 🎵 多格式支持：支持 .wav, .mp3, .flac, .ogg, .m4a, .aac
+
+### 接口地址
+
+```
+POST /api/upload-audio/
+```
+
+### 请求参数
+
+| 参数 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| file_path | string | 是 | - | 本地音频文件的完整路径 |
+| text | string | 是 | - | 音频对应的文本内容，最多1000字符 |
+| expire_time | integer | 否 | 3600 | URL有效期（秒） |
+| tts_type | string | 否 | custom | 类型标记，用于区分来源 |
+
+### 请求示例
+
+#### curl 示例
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/upload-audio/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_path": "/Users/guolei/work/local/stpython/voice_tts/outputs/stage2/hello.wav",
+    "text": "Hello, how are you today?",
+    "expire_time": 7200,
+    "tts_type": "custom"
+  }'
+```
+
+#### Python 示例
+
+```python
+import requests
+
+response = requests.post(
+    'http://127.0.0.1:8000/api/upload-audio/',
+    json={
+        'file_path': '/path/to/your/audio.wav',
+        'text': 'Hello world',
+        'expire_time': 7200,  # 2小时
+        'tts_type': 'custom'
+    }
+)
+
+data = response.json()
+if data['success']:
+    print(f"上传成功!")
+    print(f"音频URL: {data['url']}")
+    print(f"记录ID: {data['record_id']}")
+    print(f"过期时间: {data['expire_time']}")
+    print(f"对象Key: {data['object_key']}")
+```
+
+### 响应格式
+
+#### 成功响应
+
+```json
+{
+    "success": true,
+    "url": "https://web-audio.tos-cn-beijing.volces.com/hello_1701234567890.wav?X-Amz-...",
+    "expire_time": "2024-01-01 15:00:00",
+    "remaining_time": "2小时0分钟",
+    "record_id": 15,
+    "tts_type": "custom",
+    "object_key": "hello_1701234567890.wav",
+    "message": "✅ 音频上传成功"
+}
+```
+
+#### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| success | boolean | 上传是否成功 |
+| url | string | 音频播放URL（预签名URL） |
+| expire_time | string | URL过期时间 |
+| remaining_time | string | 剩余有效时间 |
+| record_id | integer | 数据库记录ID |
+| tts_type | string | 类型标记 |
+| object_key | string | 对象存储中的文件名 |
+| message | string | 成功消息 |
+
+### 错误响应
+
+#### 文件路径为空
+
+```json
+{
+    "success": false,
+    "error": "文件路径不能为空"
+}
+```
+
+#### 文件不存在
+
+```json
+{
+    "success": false,
+    "error": "文件不存在: /path/to/file.wav"
+}
+```
+
+#### 不支持的音频格式
+
+```json
+{
+    "success": false,
+    "error": "不支持的音频格式: .txt。支持的格式: .wav, .mp3, .flac, .ogg, .m4a, .aac"
+}
+```
+
+#### 上传失败
+
+```json
+{
+    "success": false,
+    "error": "上传失败: 网络错误"
+}
+```
+
+### 使用场景
+
+#### 场景1：上传本地录音
+
+```python
+# 有一个录音文件，想上传到云端
+response = requests.post(
+    'http://127.0.0.1:8000/api/upload-audio/',
+    json={
+        'file_path': '/recordings/my_voice.wav',
+        'text': '这是我录制的音频内容',
+        'expire_time': 86400  # 24小时
+    }
+)
+```
+
+#### 场景2：批量上传音频文件
+
+```python
+import os
+
+audio_dir = '/path/to/audio/files'
+audio_files = [
+    ('hello.wav', 'Hello, how are you?'),
+    ('goodbye.wav', 'Goodbye, see you later!'),
+    ('thanks.wav', 'Thank you very much!')
+]
+
+for filename, text in audio_files:
+    file_path = os.path.join(audio_dir, filename)
+    
+    response = requests.post(
+        'http://127.0.0.1:8000/api/upload-audio/',
+        json={
+            'file_path': file_path,
+            'text': text,
+            'expire_time': 604800  # 7天
+        }
+    )
+    
+    if response.json()['success']:
+        print(f"✅ {filename} 上传成功")
+    else:
+        print(f"❌ {filename} 上传失败")
+```
+
+#### 场景3：配合 outputs 目录使用
+
+```python
+# 项目中 outputs/stage2/ 目录下有很多生成的音频
+import glob
+
+audio_files = glob.glob('/Users/guolei/work/local/stpython/voice_tts/outputs/stage2/*.wav')
+
+for audio_path in audio_files:
+    # 假设文本内容可以从文件名或其他元数据获取
+    text = "从文件名或元数据中获取的文本"
+    
+    response = requests.post(
+        'http://127.0.0.1:8000/api/upload-audio/',
+        json={
+            'file_path': audio_path,
+            'text': text,
+            'tts_type': 'local_generated'
+        }
+    )
+```
+
+### 注意事项
+
+1. **文件路径**：必须是服务器可访问的本地路径（绝对路径）
+2. **文件格式**：仅支持音频格式，其他格式会被拒绝
+3. **文件大小**：建议不超过100MB（取决于对象存储配置）
+4. **对象Key命名**：系统会自动添加时间戳，避免文件名冲突
+5. **原文件保留**：上传后原文件不会被删除
+
 ## 其他API接口
 
 ### 1. 获取记录列表
