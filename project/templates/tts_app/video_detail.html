@@ -1,0 +1,354 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ video.title }} - 视频详情{% endblock %}
+
+{% block extra_css %}
+<style>
+    .video-container {
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .video-player {
+        width: 100%;
+        max-height: 500px;
+    }
+    .video-placeholder {
+        width: 100%;
+        height: 300px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        color: white;
+    }
+    .video-placeholder i {
+        font-size: 4rem;
+        margin-bottom: 15px;
+    }
+    .info-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid #eee;
+    }
+    .info-item:last-child {
+        border-bottom: none;
+    }
+    .info-label {
+        color: #666;
+        font-weight: 500;
+    }
+    .info-value {
+        font-weight: 600;
+        text-align: right;
+        max-width: 60%;
+        word-break: break-all;
+    }
+    .url-box {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        font-family: monospace;
+        font-size: 12px;
+        word-break: break-all;
+        max-height: 100px;
+        overflow-y: auto;
+    }
+    .expire-alert {
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <!-- 返回按钮 -->
+    <div class="mb-4">
+        <a href="{% url 'video_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+    </div>
+
+    <div class="row">
+        <!-- 视频播放区域 -->
+        <div class="col-lg-8">
+            <div class="video-container">
+                {% if video.status == 'success' and video.preurl and not video.is_expired %}
+                <video class="video-player" controls id="videoPlayer">
+                    <source src="{{ video.preurl }}" type="video/mp4">
+                    您的浏览器不支持视频播放
+                </video>
+                {% if video.subtitle_key %}
+                <!-- 字幕通过JavaScript加载，避免CORS问题 -->
+                <script>
+                (function() {
+                    var video = document.getElementById('videoPlayer');
+                    var track = document.createElement('track');
+                    track.kind = 'subtitles';
+                    track.label = '中文字幕';
+                    track.srclang = 'zh';
+                    track.src = '{% url "api_video_subtitle" video.id %}?format=vtt';
+                    track.default = true;
+                    video.appendChild(track);
+                })();
+                </script>
+                {% endif %}
+                {% if video.subtitle_name %}
+                <div class="mt-2">
+                    <span class="badge bg-info"><i class="bi bi-card-text"></i> 字幕: {{ video.subtitle_name }}</span>
+                    <a href="{% url 'api_video_subtitle' video.id %}" class="btn btn-sm btn-outline-secondary ms-2" download="{{ video.subtitle_name }}">
+                        <i class="bi bi-download"></i> 下载字幕
+                    </a>
+                </div>
+                {% endif %}
+                {% elif video.is_expired %}
+                <div class="video-placeholder">
+                    <i class="bi bi-clock-history"></i>
+                    <h5>URL已过期</h5>
+                    <p>请点击下方"续期URL"按钮获取新的播放链接</p>
+                </div>
+                {% else %}
+                <div class="video-placeholder">
+                    <i class="bi bi-camera-video-off"></i>
+                    <h5>视频不可用</h5>
+                    <p>{{ video.get_status_display }}</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <h2 class="mb-3">{{ video.title }}</h2>
+
+            <!-- URL信息 -->
+            {% if video.preurl %}
+            <div class="card info-card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-link-45deg"></i> 预签名URL</h5>
+                </div>
+                <div class="card-body">
+                    <div class="url-box mb-3">{{ video.preurl }}</div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary" onclick="copyUrl()">
+                            <i class="bi bi-clipboard"></i> 复制URL
+                        </button>
+                        <a href="{{ video.preurl }}" class="btn btn-outline-success" target="_blank">
+                            <i class="bi bi-box-arrow-up-right"></i> 新窗口打开
+                        </a>
+                        <a href="{{ video.preurl }}" class="btn btn-outline-info" download>
+                            <i class="bi bi-download"></i> 下载
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 视频信息 -->
+        <div class="col-lg-4">
+            <div class="card info-card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> 视频信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="info-item">
+                        <span class="info-label">记录ID</span>
+                        <span class="info-value">{{ video.id }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">状态</span>
+                        <span class="info-value">
+                            <span class="badge {% if video.status == 'success' %}bg-success{% elif video.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
+                                {{ video.get_status_display }}
+                            </span>
+                        </span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">文件大小</span>
+                        <span class="info-value">
+                            {% if video.file_size %}
+                                {{ video.file_size|filesizeformat }}
+                            {% else %}
+                                未知
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">上传时间</span>
+                        <span class="info-value">{{ video.uptime|date:"Y-m-d H:i:s" }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">过期时间</span>
+                        <span class="info-value">
+                            {% if video.expire_time %}
+                                {{ video.expire_time|date:"Y-m-d H:i:s" }}
+                            {% else %}
+                                未设置
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">状态</span>
+                        <span class="info-value">
+                            {% if video.is_expired %}
+                                <span class="badge bg-danger expire-alert">已过期</span>
+                            {% else %}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-clock"></i> 剩余 {{ video.get_remaining_time }}
+                                </span>
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="card info-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-gear"></i> 操作</h5>
+                </div>
+                <div class="card-body">
+                    {% if video.status == 'success' %}
+                    <form method="post" action="{% url 'video_renew' video.id %}" class="mb-3">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="renewExpireTime" class="form-label">续期时长</label>
+                            <select class="form-select" id="renewExpireTime" name="expire_time">
+                                <option value="3600">1小时</option>
+                                <option value="7200" selected>2小时</option>
+                                <option value="21600">6小时</option>
+                                <option value="43200">12小时</option>
+                                <option value="86400">1天</option>
+                                <option value="604800">7天</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-arrow-clockwise"></i> 续期URL
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'video_delete' video.id %}" 
+                          onsubmit="return confirm('确定要删除这个视频吗？\n\n此操作将同时删除云端文件和数据库记录。');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger w-100">
+                            <i class="bi bi-trash"></i> 删除视频
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 错误信息 -->
+            {% if video.error_message %}
+            <div class="card info-card mt-4 border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> 错误信息</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-danger mb-0">{{ video.error_message }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 字幕信息 -->
+            {% if video.subtitle_name %}
+            <div class="card info-card mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-card-text"></i> 字幕</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-file-text text-primary" style="font-size: 1.5rem;"></i>
+                        <div class="ms-3 flex-grow-1">
+                            <div class="fw-bold">{{ video.subtitle_name }}</div>
+                            {% if video.subtitle_url %}
+                            <a href="{{ video.subtitle_url }}" class="btn btn-sm btn-outline-primary mt-2" download>
+                                <i class="bi bi-download"></i> 下载字幕
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 缩略图预览 -->
+            {% if video.thumbnail_url %}
+            <div class="card info-card mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-image"></i> 缩略图</h5>
+                </div>
+                <div class="card-body p-2">
+                    <img src="{{ video.thumbnail_url }}" alt="缩略图" 
+                         class="img-fluid rounded" style="width: 100%;">
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 对象存储信息 -->
+            {% if video.object_key %}
+            <div class="card info-card mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-cloud"></i> 存储信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="info-item">
+                        <span class="info-label">视频 Key</span>
+                        <span class="info-value" style="font-size: 12px;">{{ video.object_key }}</span>
+                    </div>
+                    {% if video.thumbnail_key %}
+                    <div class="info-item">
+                        <span class="info-label">缩略图 Key</span>
+                        <span class="info-value" style="font-size: 12px;">{{ video.thumbnail_key }}</span>
+                    </div>
+                    {% endif %}
+                    {% if video.subtitle_key %}
+                    <div class="info-item">
+                        <span class="info-label">字幕 Key</span>
+                        <span class="info-value" style="font-size: 12px;">{{ video.subtitle_key }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="info-item">
+                        <span class="info-label">存储桶</span>
+                        <span class="info-value">web-video</span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyUrl() {
+    var url = "{{ video.preurl|escapejs }}";
+    navigator.clipboard.writeText(url).then(function() {
+        alert('URL已复制到剪贴板！');
+    }, function(err) {
+        console.error('复制失败: ', err);
+        // 降级方案
+        var textArea = document.createElement("textarea");
+        textArea.value = url;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('URL已复制到剪贴板！');
+    });
+}
+</script>
+{% endblock %}
+

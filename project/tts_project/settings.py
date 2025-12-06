@@ -104,7 +104,8 @@ TOS_ACCESS_KEY = os.getenv('TOS_ACCESS_KEY', '')
 TOS_SECRET_KEY = os.getenv('TOS_SECRET_KEY', '')
 TOS_ENDPOINT = "tos-cn-beijing.volces.com"
 TOS_REGION = "cn-beijing"
-TOS_BUCKET_NAME = "web-audio"
+TOS_BUCKET_NAME = "web-audio"           # 音频存储桶
+TOS_VIDEO_BUCKET_NAME = "web-video"     # 视频存储桶
 
 # 火山引擎TTS配置（OpenSpeech API）
 VOLC_APPID = os.getenv('VOLC_APPID', '2723200895')

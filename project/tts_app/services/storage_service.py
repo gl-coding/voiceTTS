@@ -12,12 +12,18 @@ from django.utils import timezone
 class StorageService:
     """TOS对象存储服务"""
     
-    def __init__(self):
+    def __init__(self, bucket_name=None):
+        """
+        初始化存储服务
+        
+        Args:
+            bucket_name: 自定义bucket名称，默认使用settings中的TOS_BUCKET_NAME
+        """
         self.ak = settings.TOS_ACCESS_KEY
         self.sk = settings.TOS_SECRET_KEY
         self.endpoint = settings.TOS_ENDPOINT
         self.region = settings.TOS_REGION
-        self.bucket_name = settings.TOS_BUCKET_NAME
+        self.bucket_name = bucket_name or settings.TOS_BUCKET_NAME
         self.client = None
     
     def get_client(self):

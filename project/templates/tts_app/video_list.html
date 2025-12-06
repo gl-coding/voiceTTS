@@ -1,0 +1,548 @@
+{% extends 'base.html' %}
+
+{% block title %}视频管理 - 英文语音生成{% endblock %}
+
+{% block extra_css %}
+<style>
+    .video-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+        margin-bottom: 20px;
+    }
+    .video-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    .video-thumbnail {
+        width: 100%;
+        height: 160px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px 12px 0 0;
+        position: relative;
+        overflow: hidden;
+    }
+    .video-thumbnail i {
+        font-size: 3rem;
+        color: white;
+    }
+    .video-thumbnail img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;      /* 裁剪填充，不变形 */
+        object-position: center; /* 居中裁剪 */
+    }
+    .video-thumbnail .play-overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 50px;
+        height: 50px;
+        background: rgba(0,0,0,0.6);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        color: white;
+        opacity: 0;
+        transition: all 0.3s;
+    }
+    .video-card:hover .play-overlay {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    .upload-zone {
+        border: 2px dashed #667eea;
+        border-radius: 15px;
+        padding: 40px;
+        text-align: center;
+        background: #f8f9ff;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    .upload-zone:hover {
+        background: #eef0ff;
+        border-color: #764ba2;
+    }
+    .file-size {
+        font-size: 0.85rem;
+        color: #666;
+    }
+    .expire-warning {
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+    .upload-dropzone {
+        border: 2px dashed #667eea;
+        border-radius: 12px;
+        background: #f8f9ff;
+        transition: all 0.3s;
+        cursor: pointer;
+    }
+    .upload-dropzone:hover,
+    .upload-dropzone.dragover {
+        background: #eef0ff;
+        border-color: #764ba2;
+        box-shadow: 0 0 15px rgba(102, 126, 234, 0.3);
+    }
+    .upload-dropzone.dragover {
+        transform: scale(1.02);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-gradient">
+            <i class="bi bi-camera-video"></i> 视频管理
+            {% if total_count %}
+                <span class="badge bg-secondary">{{ total_count }}</span>
+            {% endif %}
+        </h1>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+            <i class="bi bi-cloud-upload"></i> 上传视频
+        </button>
+    </div>
+
+    <!-- 搜索框 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" action="{% url 'video_list' %}" class="row g-3">
+                <div class="col-md-10">
+                    <div class="input-group">
+                        <span class="input-group-text">
+                            <i class="bi bi-search"></i>
+                        </span>
+                        <input 
+                            type="text" 
+                            class="form-control" 
+                            name="q" 
+                            value="{{ search_query }}" 
+                            placeholder="搜索视频标题或记录ID..."
+                        >
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                </div>
+            </form>
+            {% if search_query %}
+                <div class="mt-2">
+                    <small class="text-muted">
+                        搜索 "<strong>{{ search_query }}</strong>" 找到 <strong>{{ total_count }}</strong> 条结果
+                    </small>
+                    <a href="{% url 'video_list' %}" class="btn btn-sm btn-outline-secondary ms-2">
+                        <i class="bi bi-x-circle"></i> 清除搜索
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if page_obj %}
+    <div class="row">
+        {% for video in page_obj %}
+        <div class="col-md-4">
+            <div class="card video-card">
+                <div class="video-thumbnail">
+                    {% if video.thumbnail_url %}
+                    <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy">
+                    <i class="bi bi-play-circle-fill play-overlay"></i>
+                    {% else %}
+                    <i class="bi bi-play-circle"></i>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title text-truncate" title="{{ video.title }}">{{ video.title }}</h5>
+                    <div class="mb-2">
+                        <span class="badge {% if video.status == 'success' %}bg-success{% elif video.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
+                            {{ video.get_status_display }}
+                        </span>
+                        {% if video.is_expired %}
+                            <span class="badge bg-danger expire-warning">已过期</span>
+                        {% endif %}
+                    </div>
+                    <p class="card-text file-size">
+                        <i class="bi bi-file-earmark"></i> 
+                        {% if video.file_size %}
+                            {{ video.file_size|filesizeformat }}
+                        {% else %}
+                            未知大小
+                        {% endif %}
+                    </p>
+                    <p class="card-text">
+                        <small class="text-muted">
+                            <i class="bi bi-clock"></i> {{ video.uptime|date:"Y-m-d H:i" }}
+                        </small>
+                    </p>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'video_detail' video.id %}" class="btn btn-sm btn-outline-primary flex-grow-1">
+                            <i class="bi bi-eye"></i> 详情
+                        </a>
+                        {% if video.status == 'success' and video.preurl %}
+                        <a href="{{ video.preurl }}" class="btn btn-sm btn-outline-success" target="_blank" title="播放视频">
+                            <i class="bi bi-play"></i>
+                        </a>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-danger" 
+                                onclick="deleteVideo({{ video.id }}, '{{ video.title|escapejs }}')" title="删除">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 分页控件 -->
+    {% if page_obj.has_other_pages %}
+    <nav aria-label="视频列表分页">
+        <ul class="pagination justify-content-center mt-4">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}">
+                    <i class="bi bi-chevron-double-left"></i>
+                </a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            </li>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ num }}{% if search_query %}&q={{ search_query }}{% endif %}">{{ num }}</a>
+                </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}">
+                    <i class="bi bi-chevron-double-right"></i>
+                </a>
+            </li>
+            {% endif %}
+        </ul>
+        <div class="text-center text-muted">
+            <small>第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页，共 {{ page_obj.paginator.count }} 条记录</small>
+        </div>
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-camera-video-off" style="font-size: 4rem; color: #ccc;"></i>
+        <p class="text-muted mt-3">暂无视频记录</p>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+            <i class="bi bi-cloud-upload"></i> 上传第一个视频
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 上传弹窗 -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalLabel">
+                    <i class="bi bi-cloud-upload"></i> 上传视频
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="uploadForm" method="post" action="{% url 'video_upload_page' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <!-- 文件选择区域 -->
+                    <div class="mb-4">
+                        <label class="form-label">选择视频文件</label>
+                        <div class="upload-dropzone" id="dropzone">
+                            <input type="file" class="d-none" id="video_file" name="video_file" 
+                                   accept=".mp4,.avi,.mov,.mkv,.wmv,.flv,.webm,.m4v" required>
+                            <div class="dropzone-content text-center py-5" id="dropzoneContent">
+                                <i class="bi bi-cloud-arrow-up" style="font-size: 3rem; color: #667eea;"></i>
+                                <p class="mt-3 mb-1">拖拽视频文件到此处，或</p>
+                                <button type="button" class="btn btn-outline-primary" id="selectFileBtn">
+                                    <i class="bi bi-folder2-open"></i> 选择文件
+                                </button>
+                            </div>
+                            <div class="file-preview d-none" id="filePreview">
+                                <div class="d-flex align-items-center p-3 bg-light rounded">
+                                    <i class="bi bi-file-earmark-play text-primary" style="font-size: 2.5rem;"></i>
+                                    <div class="ms-3 flex-grow-1">
+                                        <div class="fw-bold" id="fileName">文件名</div>
+                                        <small class="text-muted" id="fileSize">0 MB</small>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" id="removeFileBtn">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="title" class="form-label">视频标题</label>
+                        <input type="text" class="form-control" id="title" name="title" 
+                               placeholder="我的视频">
+                        <div class="form-text">可选，不填则使用文件名</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="expire_time" class="form-label">URL有效期</label>
+                        <select class="form-select" id="expire_time" name="expire_time">
+                            <option value="3600">1小时</option>
+                            <option value="7200" selected>2小时</option>
+                            <option value="21600">6小时</option>
+                            <option value="43200">12小时</option>
+                            <option value="86400">1天</option>
+                            <option value="604800">7天</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 字幕文件选择 -->
+                    <div class="mb-3">
+                        <label class="form-label">字幕文件 <small class="text-muted">(可选)</small></label>
+                        <div class="subtitle-upload-area">
+                            <input type="file" class="d-none" id="subtitle_file" name="subtitle_file" 
+                                   accept=".srt,.vtt,.ass,.ssa">
+                            <div class="d-flex align-items-center gap-2" id="subtitleSelectArea">
+                                <button type="button" class="btn btn-outline-secondary" id="selectSubtitleBtn">
+                                    <i class="bi bi-card-text"></i> 选择字幕
+                                </button>
+                                <span class="text-muted" id="subtitleFileName">未选择</span>
+                                <button type="button" class="btn btn-outline-danger btn-sm d-none" id="removeSubtitleBtn">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-text">支持格式: SRT, VTT, ASS, SSA</div>
+                    </div>
+                    
+                    <!-- 上传进度条 -->
+                    <div class="progress d-none" id="uploadProgress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%" id="progressBar">0%</div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <i class="bi bi-info-circle"></i> 
+                        视频格式: MP4, AVI, MOV, MKV, WMV, FLV, WebM, M4V
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                        <i class="bi bi-cloud-upload"></i> 上传
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认表单 -->
+<form id="deleteForm" method="post" style="display: none;">
+    {% csrf_token %}
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteVideo(id, title) {
+    if (confirm('确定要删除视频 "' + title + '" 吗？\n\n此操作将同时删除云端文件和数据库记录。')) {
+        var form = document.getElementById('deleteForm');
+        form.action = '/video/' + id + '/delete/';
+        form.submit();
+    }
+}
+
+// 文件上传功能
+document.addEventListener('DOMContentLoaded', function() {
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('video_file');
+    const selectFileBtn = document.getElementById('selectFileBtn');
+    const dropzoneContent = document.getElementById('dropzoneContent');
+    const filePreview = document.getElementById('filePreview');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const removeFileBtn = document.getElementById('removeFileBtn');
+    const titleInput = document.getElementById('title');
+    
+    // 点击选择文件按钮
+    selectFileBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInput.click();
+    });
+    
+    // 点击整个拖拽区域也可以选择文件
+    dropzone.addEventListener('click', function(e) {
+        if (e.target === dropzone || e.target.closest('.dropzone-content')) {
+            fileInput.click();
+        }
+    });
+    
+    // 文件选择变化
+    fileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            showFilePreview(this.files[0]);
+        }
+    });
+    
+    // 移除文件
+    removeFileBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInput.value = '';
+        hideFilePreview();
+    });
+    
+    // 拖拽事件
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, highlight, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, unhighlight, false);
+    });
+    
+    function highlight() {
+        dropzone.classList.add('dragover');
+    }
+    
+    function unhighlight() {
+        dropzone.classList.remove('dragover');
+    }
+    
+    // 处理拖拽放下的文件
+    dropzone.addEventListener('drop', function(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        if (files.length > 0) {
+            const file = files[0];
+            const allowedTypes = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v'];
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+            
+            if (allowedTypes.includes(ext)) {
+                // 设置文件到input
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                fileInput.files = dataTransfer.files;
+                showFilePreview(file);
+            } else {
+                alert('不支持的文件格式！\n支持: MP4, AVI, MOV, MKV, WMV, FLV, WebM, M4V');
+            }
+        }
+    });
+    
+    // 显示文件预览
+    function showFilePreview(file) {
+        dropzoneContent.classList.add('d-none');
+        filePreview.classList.remove('d-none');
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        
+        // 自动填充标题（如果为空）
+        if (!titleInput.value) {
+            titleInput.value = file.name.replace(/\.[^/.]+$/, '');
+        }
+    }
+    
+    // 隐藏文件预览
+    function hideFilePreview() {
+        dropzoneContent.classList.remove('d-none');
+        filePreview.classList.add('d-none');
+    }
+    
+    // 格式化文件大小
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    // ========== 字幕文件选择 ==========
+    const subtitleInput = document.getElementById('subtitle_file');
+    const selectSubtitleBtn = document.getElementById('selectSubtitleBtn');
+    const subtitleFileName = document.getElementById('subtitleFileName');
+    const removeSubtitleBtn = document.getElementById('removeSubtitleBtn');
+    
+    // 点击选择字幕按钮
+    selectSubtitleBtn.addEventListener('click', function() {
+        subtitleInput.click();
+    });
+    
+    // 字幕文件选择变化
+    subtitleInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            const file = this.files[0];
+            subtitleFileName.textContent = file.name;
+            subtitleFileName.classList.remove('text-muted');
+            subtitleFileName.classList.add('text-success', 'fw-bold');
+            removeSubtitleBtn.classList.remove('d-none');
+        }
+    });
+    
+    // 移除字幕
+    removeSubtitleBtn.addEventListener('click', function() {
+        subtitleInput.value = '';
+        subtitleFileName.textContent = '未选择';
+        subtitleFileName.classList.add('text-muted');
+        subtitleFileName.classList.remove('text-success', 'fw-bold');
+        removeSubtitleBtn.classList.add('d-none');
+    });
+    
+    // 表单提交时显示进度
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        const file = fileInput.files[0];
+        if (!file) {
+            e.preventDefault();
+            alert('请先选择一个视频文件！');
+            return;
+        }
+        
+        // 显示上传中状态
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('submitBtn').innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>上传中...';
+    });
+});
+</script>
+{% endblock %}
+
