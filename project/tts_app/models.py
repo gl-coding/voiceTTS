@@ -118,10 +118,37 @@ class VideoRecord(models.Model):
         ('failed', '失败'),
     ]
     
+    CATEGORY_CHOICES = [
+        ('default', '默认'),
+        ('education', '教育'),
+        ('entertainment', '娱乐'),
+        ('technology', '科技'),
+        ('life', '生活'),
+        ('music', '音乐'),
+        ('movie', '电影'),
+        ('game', '游戏'),
+        ('news', '新闻'),
+        ('sports', '体育'),
+        ('other', '其他'),
+    ]
+    
     title = models.CharField(
         max_length=200, 
         verbose_name='视频标题',
         help_text='视频标题或描述'
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default='default',
+        verbose_name='分类'
+    )
+    tags = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name='标签',
+        help_text='多个标签用逗号分隔'
     )
     preurl = models.URLField(
         max_length=500, 
@@ -229,11 +256,28 @@ class VideoRecord(models.Model):
         else:
             return f"{minutes}分钟"
     
+    def get_tags_list(self):
+        """获取标签列表"""
+        if self.tags:
+            return [tag.strip() for tag in self.tags.split(',') if tag.strip()]
+        return []
+    
+    def set_tags_from_list(self, tags_list):
+        """从列表设置标签"""
+        if tags_list:
+            self.tags = ','.join([tag.strip() for tag in tags_list if tag.strip()])
+        else:
+            self.tags = None
+    
     def to_dict(self):
         """转换为字典"""
         return {
             'id': self.id,
             'title': self.title,
+            'category': self.category,
+            'category_display': self.get_category_display(),
+            'tags': self.tags,
+            'tags_list': self.get_tags_list(),
             'preurl': self.preurl,
             'path': self.path,
             'object_key': self.object_key,

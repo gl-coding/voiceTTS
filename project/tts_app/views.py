@@ -1160,30 +1160,296 @@ def srt_to_vtt(srt_content):
     return vtt_content
 
 
-@require_http_methods(["GET"])
-def api_video_detail(request, record_id):
-    """API: 获取视频记录详情（JSON格式）"""
+@require_http_methods(["POST"])
+@csrf_exempt
+def api_video_update(request, record_id):
+    """
+    API: 更新视频信息
+    
+    POST /api/video/<id>/update/
+    
+    参数（form-data）:
+        title: 视频标题
+        subtitle_name: 字幕文件名（显示名称）
+        subtitle_file: 新字幕文件（可选）
+        expire_time: 续期时长秒数（可选，0表示不续期）
+    
+    返回:
+        {"success": true, "message": "更新成功"}
+    """
+    import time
+    import uuid
+    import tempfile
+    
     try:
         record = VideoRecord.objects.get(id=record_id)
+    except VideoRecord.DoesNotExist:
         return JsonResponse({
-            'success': True,
-            'data': record.to_dict()
-        })
+            'success': False,
+            'error': '视频不存在'
+        }, status=404)
+    
+    # 获取参数
+    title = request.POST.get('title', '').strip()
+    category = request.POST.get('category', '').strip()
+    tags = request.POST.get('tags', '').strip()
+    subtitle_name = request.POST.get('subtitle_name', '').strip()
+    expire_seconds = int(request.POST.get('expire_time', 0))
+    
+    # 更新标题
+    if title:
+        record.title = title
+    
+    # 更新分类
+    valid_categories = ['default', 'education', 'entertainment', 'technology', 'life', 
+                        'music', 'movie', 'game', 'news', 'sports', 'other']
+    if category and category in valid_categories:
+        record.category = category
+    
+    # 更新标签
+    record.tags = tags if tags else None
+    
+    # 更新字幕显示名称
+    if subtitle_name != record.subtitle_name:
+        record.subtitle_name = subtitle_name if subtitle_name else None
+    
+    # 处理新字幕文件上传
+    if 'subtitle_file' in request.FILES:
+        subtitle_file = request.FILES['subtitle_file']
+        subtitle_ext = os.path.splitext(subtitle_file.name)[1].lower()
+        
+        allowed_subtitle_ext = ['.srt', '.vtt', '.ass', '.ssa']
+        if subtitle_ext in allowed_subtitle_ext:
+            try:
+                from django.conf import settings as django_settings
+                video_bucket = getattr(django_settings, 'TOS_VIDEO_BUCKET_NAME', 'web-video')
+                storage_service = StorageService(bucket_name=video_bucket)
+                
+                # 删除旧字幕
+                if record.subtitle_key:
+                    try:
+                        storage_service.delete_file(record.subtitle_key)
+                    except:
+                        pass
+                
+                # 上传新字幕
+                temp_dir = tempfile.gettempdir()
+                timestamp = int(time.time())
+                unique_id = uuid.uuid4().hex[:8]
+                temp_path = os.path.join(temp_dir, f"sub_{unique_id}_{timestamp}{subtitle_ext}")
+                
+                with open(temp_path, 'wb+') as f:
+                    for chunk in subtitle_file.chunks():
+                        f.write(chunk)
+                
+                new_subtitle_key = f"sub_{unique_id}_{timestamp}{subtitle_ext}"
+                success, sub_url, _, error = storage_service.upload_and_get_url(
+                    temp_path, object_key=new_subtitle_key, expires=7200
+                )
+                
+                if success:
+                    record.subtitle_key = new_subtitle_key
+                    record.subtitle_url = sub_url
+                    record.subtitle_name = subtitle_file.name
+                
+                # 清理临时文件
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+            except Exception as e:
+                print(f"字幕上传失败: {e}")
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': f'不支持的字幕格式: {subtitle_ext}'
+            }, status=400)
+    
+    # 续期URL
+    if expire_seconds > 0 and record.object_key:
+        try:
+            from django.conf import settings as django_settings
+            video_bucket = getattr(django_settings, 'TOS_VIDEO_BUCKET_NAME', 'web-video')
+            storage_service = StorageService(bucket_name=video_bucket)
+            
+            # 续期视频URL
+            success, preurl, expire_time, _ = storage_service.generate_presigned_url(
+                record.object_key, expires=expire_seconds
+            )
+            if success:
+                record.preurl = preurl
+                record.expire_time = expire_time
+            
+            # 续期缩略图
+            if record.thumbnail_key:
+                _, thumb_url, _, _ = storage_service.generate_presigned_url(
+                    record.thumbnail_key, expires=expire_seconds
+                )
+                if thumb_url:
+                    record.thumbnail_url = thumb_url
+            
+            # 续期字幕
+            if record.subtitle_key:
+                _, sub_url, _, _ = storage_service.generate_presigned_url(
+                    record.subtitle_key, expires=expire_seconds
+                )
+                if sub_url:
+                    record.subtitle_url = sub_url
+                    
+        except Exception as e:
+            print(f"续期失败: {e}")
+    
+    record.save()
+    
+    return JsonResponse({
+        'success': True,
+        'message': '✅ 视频信息已更新',
+        'data': record.to_dict()
+    })
+
+
+@require_http_methods(["GET"])
+def api_video_detail(request, record_id):
+    """
+    API: 获取视频记录详情
+    
+    GET /api/video/<id>/
+    
+    参数:
+        auto_renew: 是否自动续期过期URL（可选，默认true）
+        expire_time: 续期时长秒数（可选，默认7200）
+    
+    返回:
+        {
+            "success": true,
+            "data": {
+                "id": 7,
+                "title": "视频标题",
+                "preurl": "视频播放URL",
+                "thumbnail_url": "缩略图URL",
+                "subtitle_url": "字幕URL",
+                "subtitle_name": "字幕文件名",
+                "file_size": 12345678,
+                "status": "success",
+                "uptime": "2025-12-06 12:00:00",
+                "expire_time": "2025-12-06 14:00:00",
+                "is_expired": false,
+                "remaining_time": "1小时59分钟"
+            },
+            "auto_renewed": false
+        }
+    """
+    try:
+        record = VideoRecord.objects.get(id=record_id)
     except VideoRecord.DoesNotExist:
         return JsonResponse({
             'success': False,
             'error': '记录不存在'
         }, status=404)
+    
+    auto_renewed = False
+    auto_renew = request.GET.get('auto_renew', 'true').lower() != 'false'
+    expire_seconds = int(request.GET.get('expire_time', 7200))
+    
+    # 自动续期过期或即将过期的URL
+    if auto_renew and record.status == 'success' and record.object_key:
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        needs_renewal = False
+        if record.expire_time is None or record.is_expired():
+            needs_renewal = True
+        elif record.expire_time - timezone.now() < timedelta(minutes=5):
+            needs_renewal = True
+        
+        if needs_renewal:
+            try:
+                from django.conf import settings as django_settings
+                video_bucket = getattr(django_settings, 'TOS_VIDEO_BUCKET_NAME', 'web-video')
+                storage_service = StorageService(bucket_name=video_bucket)
+                
+                # 续期视频URL
+                success, preurl, expire_time, _ = storage_service.generate_presigned_url(
+                    record.object_key, expires=expire_seconds
+                )
+                if success:
+                    record.preurl = preurl
+                    record.expire_time = expire_time
+                    auto_renewed = True
+                
+                # 续期缩略图
+                if record.thumbnail_key:
+                    _, thumb_url, _, _ = storage_service.generate_presigned_url(
+                        record.thumbnail_key, expires=expire_seconds
+                    )
+                    if thumb_url:
+                        record.thumbnail_url = thumb_url
+                
+                # 续期字幕
+                if record.subtitle_key:
+                    _, sub_url, _, _ = storage_service.generate_presigned_url(
+                        record.subtitle_key, expires=expire_seconds
+                    )
+                    if sub_url:
+                        record.subtitle_url = sub_url
+                
+                if auto_renewed:
+                    record.save()
+            except Exception as e:
+                print(f"自动续期失败: {e}")
+    
+    return JsonResponse({
+        'success': True,
+        'data': record.to_dict(),
+        'auto_renewed': auto_renewed
+    })
 
 
 @require_http_methods(["GET"])
 def api_video_list(request):
-    """API: 获取视频记录列表（JSON格式，支持搜索）"""
+    """
+    API: 获取视频记录列表
+    
+    GET /api/videos/
+    
+    参数:
+        q: 搜索关键词（可选，按标题搜索）
+        limit: 返回数量限制（可选，默认20）
+        offset: 分页偏移量（可选，默认0）
+        status: 状态过滤（可选，success/pending/failed）
+        auto_renew: 是否自动续期过期URL（可选，默认false，列表默认不续期）
+    
+    返回:
+        {
+            "success": true,
+            "count": 10,
+            "total": 50,
+            "limit": 20,
+            "offset": 0,
+            "search_query": "",
+            "data": [
+                {
+                    "id": 7,
+                    "title": "视频标题",
+                    "preurl": "视频URL",
+                    "thumbnail_url": "缩略图URL",
+                    "file_size": 12345678,
+                    "status": "success",
+                    "uptime": "2025-12-06 12:00:00",
+                    "is_expired": false
+                },
+                ...
+            ]
+        }
+    """
     from django.db.models import Q
     
     # 获取参数
-    limit = int(request.GET.get('limit', 20))
+    limit = min(int(request.GET.get('limit', 20)), 100)  # 最大100条
+    offset = int(request.GET.get('offset', 0))
     search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+    auto_renew = request.GET.get('auto_renew', 'false').lower() == 'true'
+    expire_seconds = int(request.GET.get('expire_time', 7200))
     
     # 基础查询
     records = VideoRecord.objects.all()
@@ -1195,14 +1461,49 @@ def api_video_list(request):
             Q(id__icontains=search_query)
         )
     
-    # 排序和限制
-    records = records.order_by('-uptime')[:limit]
+    # 状态过滤
+    if status_filter in ['success', 'pending', 'failed']:
+        records = records.filter(status=status_filter)
+    
+    # 获取总数
+    total = records.count()
+    
+    # 排序和分页
+    records = records.order_by('-uptime')[offset:offset+limit]
+    
+    # 是否自动续期（列表默认不续期，减少API调用）
+    result_data = []
+    for record in records:
+        data = record.to_dict()
+        
+        # 如果开启自动续期且URL过期
+        if auto_renew and record.status == 'success' and record.object_key and record.is_expired():
+            try:
+                from django.conf import settings as django_settings
+                video_bucket = getattr(django_settings, 'TOS_VIDEO_BUCKET_NAME', 'web-video')
+                storage_service = StorageService(bucket_name=video_bucket)
+                
+                success, preurl, expire_time, _ = storage_service.generate_presigned_url(
+                    record.object_key, expires=expire_seconds
+                )
+                if success:
+                    record.preurl = preurl
+                    record.expire_time = expire_time
+                    record.save(update_fields=['preurl', 'expire_time'])
+                    data = record.to_dict()  # 更新数据
+            except Exception as e:
+                print(f"续期失败: {e}")
+        
+        result_data.append(data)
     
     return JsonResponse({
         'success': True,
-        'count': len(records),
+        'count': len(result_data),
+        'total': total,
+        'limit': limit,
+        'offset': offset,
         'search_query': search_query,
-        'data': [record.to_dict() for record in records]
+        'data': result_data
     })
 
 

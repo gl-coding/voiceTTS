@@ -171,10 +171,20 @@
                         <span class="badge {% if video.status == 'success' %}bg-success{% elif video.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
                             {{ video.get_status_display }}
                         </span>
+                        {% if video.category and video.category != 'default' %}
+                        <span class="badge bg-primary">{{ video.get_category_display }}</span>
+                        {% endif %}
                         {% if video.is_expired %}
                             <span class="badge bg-danger expire-warning">已过期</span>
                         {% endif %}
                     </div>
+                    {% if video.tags %}
+                    <div class="mb-2">
+                        {% for tag in video.get_tags_list %}
+                        <span class="badge bg-secondary me-1">{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                     <p class="card-text file-size">
                         <i class="bi bi-file-earmark"></i> 
                         {% if video.file_size %}
@@ -197,6 +207,10 @@
                             <i class="bi bi-play"></i>
                         </a>
                         {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                onclick="openEditModal({{ video.id }}, '{{ video.title|escapejs }}', '{{ video.subtitle_name|default:''|escapejs }}')" title="编辑">
+                            <i class="bi bi-pencil"></i>
+                        </button>
                         <button type="button" class="btn btn-sm btn-outline-danger" 
                                 onclick="deleteVideo({{ video.id }}, '{{ video.title|escapejs }}')" title="删除">
                             <i class="bi bi-trash"></i>
@@ -369,6 +383,94 @@
 <form id="deleteForm" method="post" style="display: none;">
     {% csrf_token %}
 </form>
+
+<!-- 编辑视频弹窗 -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editModalLabel">
+                    <i class="bi bi-pencil-square"></i> 编辑视频信息
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editForm" method="post">
+                {% csrf_token %}
+                <input type="hidden" id="edit_video_id" name="video_id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="edit_title" class="form-label">视频标题</label>
+                        <input type="text" class="form-control" id="edit_title" name="title" required>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="edit_category" class="form-label">分类</label>
+                            <select class="form-select" id="edit_category" name="category">
+                                <option value="default">默认</option>
+                                <option value="education">教育</option>
+                                <option value="entertainment">娱乐</option>
+                                <option value="technology">科技</option>
+                                <option value="life">生活</option>
+                                <option value="music">音乐</option>
+                                <option value="movie">电影</option>
+                                <option value="game">游戏</option>
+                                <option value="news">新闻</option>
+                                <option value="sports">体育</option>
+                                <option value="other">其他</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="edit_tags" class="form-label">标签</label>
+                            <input type="text" class="form-control" id="edit_tags" name="tags" 
+                                   placeholder="英语,TED,演讲">
+                            <div class="form-text">多个标签用逗号分隔</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit_subtitle_name" class="form-label">字幕文件名</label>
+                        <input type="text" class="form-control" id="edit_subtitle_name" name="subtitle_name" 
+                               placeholder="无字幕">
+                        <div class="form-text">仅修改显示名称，不会更改实际文件</div>
+                    </div>
+                    
+                    <!-- 更新字幕文件 -->
+                    <div class="mb-3">
+                        <label class="form-label">更新字幕文件 <small class="text-muted">(可选)</small></label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="file" class="d-none" id="edit_subtitle_file" name="subtitle_file" 
+                                   accept=".srt,.vtt,.ass,.ssa">
+                            <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('edit_subtitle_file').click()">
+                                <i class="bi bi-upload"></i> 选择新字幕
+                            </button>
+                            <span class="text-muted" id="edit_subtitle_file_name">未选择</span>
+                        </div>
+                        <div class="form-text">支持格式: SRT, VTT, ASS, SSA</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit_expire_time" class="form-label">续期URL</label>
+                        <select class="form-select" id="edit_expire_time" name="expire_time">
+                            <option value="0">不续期</option>
+                            <option value="3600">续期1小时</option>
+                            <option value="7200">续期2小时</option>
+                            <option value="21600">续期6小时</option>
+                            <option value="86400">续期1天</option>
+                            <option value="604800">续期7天</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary" id="editSubmitBtn">
+                        <i class="bi bi-check-lg"></i> 保存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -380,6 +482,89 @@ function deleteVideo(id, title) {
         form.submit();
     }
 }
+
+// 打开编辑弹窗（从API获取完整信息）
+async function openEditModal(id, title, subtitleName) {
+    // 先设置基本信息
+    document.getElementById('edit_video_id').value = id;
+    document.getElementById('edit_title').value = title;
+    document.getElementById('edit_subtitle_name').value = subtitleName || '';
+    document.getElementById('edit_subtitle_file').value = '';
+    document.getElementById('edit_subtitle_file_name').textContent = '未选择';
+    document.getElementById('edit_expire_time').value = '0';
+    document.getElementById('edit_category').value = 'default';
+    document.getElementById('edit_tags').value = '';
+    
+    // 从API获取完整视频信息
+    try {
+        const response = await fetch('/api/video/' + id + '/?auto_renew=false');
+        const result = await response.json();
+        if (result.success && result.data) {
+            document.getElementById('edit_category').value = result.data.category || 'default';
+            document.getElementById('edit_tags').value = result.data.tags || '';
+        }
+    } catch (e) {
+        console.log('获取视频详情失败:', e);
+    }
+    
+    var editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    editModal.show();
+}
+
+// 编辑表单提交
+document.getElementById('editForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const videoId = document.getElementById('edit_video_id').value;
+    const title = document.getElementById('edit_title').value;
+    const category = document.getElementById('edit_category').value;
+    const tags = document.getElementById('edit_tags').value;
+    const subtitleName = document.getElementById('edit_subtitle_name').value;
+    const expireTime = document.getElementById('edit_expire_time').value;
+    const subtitleFile = document.getElementById('edit_subtitle_file').files[0];
+    
+    const submitBtn = document.getElementById('editSubmitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>保存中...';
+    
+    try {
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('category', category);
+        formData.append('tags', tags);
+        formData.append('subtitle_name', subtitleName);
+        formData.append('expire_time', expireTime);
+        if (subtitleFile) {
+            formData.append('subtitle_file', subtitleFile);
+        }
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        
+        const response = await fetch('/api/video/' + videoId + '/update/', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('✅ 保存成功！');
+            location.reload();
+        } else {
+            alert('❌ 保存失败: ' + result.error);
+        }
+    } catch (error) {
+        alert('❌ 请求失败: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> 保存';
+    }
+});
+
+// 字幕文件选择显示
+document.getElementById('edit_subtitle_file').addEventListener('change', function() {
+    const fileName = this.files[0] ? this.files[0].name : '未选择';
+    document.getElementById('edit_subtitle_file_name').textContent = fileName;
+});
 
 // 文件上传功能
 document.addEventListener('DOMContentLoaded', function() {

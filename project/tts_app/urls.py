@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/get-video-url/', views.api_get_video_url, name='api_get_video_url'),
     path('api/video/<int:record_id>/', views.api_video_detail, name='api_video_detail'),
     path('api/video/<int:record_id>/subtitle/', views.api_video_subtitle, name='api_video_subtitle'),  # 字幕代理
+    path('api/video/<int:record_id>/update/', views.api_video_update, name='api_video_update'),  # 更新视频信息
     path('api/video/<int:record_id>/renew/', views.api_renew_video_url, name='api_renew_video_url'),
     path('api/video/<int:record_id>/delete/', views.api_delete_video, name='api_delete_video'),
     path('api/videos/', views.api_video_list, name='api_video_list'),
